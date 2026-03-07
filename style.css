@@ -1,0 +1,12 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  overflow: hidden; /* also prevents scrollbars appearing */
+}
+canvas {
+  display: block; /* also fixes a subtle 4px gap caused by inline element spacing */
+}
