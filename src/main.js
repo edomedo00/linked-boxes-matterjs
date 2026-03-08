@@ -1,7 +1,6 @@
 import { syncBoxFigureBody } from "./box.js";
 import { drawDraggingBox, drawCircle } from "./utils.js";
-import "./actions.js";
-// import {} from "./eyelet";
+import { initEventListeners } from "./actions.js";
 // import {} from "./actions";
 
 const { Engine, Render, Runner, Bodies, Body, Composite, Constraint, Events } =
@@ -17,10 +16,20 @@ export let eyeletFigures = [];
 export let firstEyelet = null;
 let SecondEyelet = null;
 
+export const setMousePos = (val) => {
+  mousePos = val;
+};
+export const setSecondBox = (val) => {
+  secondBox = val;
+};
+export const setTargetCorner = (val) => {
+  targetCorner = val;
+};
+
 const W = Math.min(window.innerWidth - 40, 800);
 const H = Math.min(window.innerHeight - 120, 560);
 
-const canvas = document.getElementById("canvas");
+export const canvas = document.getElementById("canvas");
 canvas.width = W;
 canvas.height = H;
 
@@ -121,4 +130,4 @@ Events.on(render, "afterRender", () => {
   ctx.beginPath();
 });
 
-export const canvas = document.getElementById("canvas");
+initEventListeners();

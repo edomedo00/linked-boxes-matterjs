@@ -4,7 +4,7 @@ import {
   mousePos,
   secondBox,
   targetCorner,
-} from "../box-grid.js";
+} from "./main.js";
 import { selectBox } from "./box.js";
 
 export function drawCircle(x, y, color) {

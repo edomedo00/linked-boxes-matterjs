@@ -7,7 +7,7 @@ import {
   eyeletFigures,
   boxFigures,
   world,
-} from "../box-grid.js";
+} from "./main.js";
 import { createBoxEyelet, syncEyelets } from "./eyelet.js";
 
 export function selectBox(pos) {

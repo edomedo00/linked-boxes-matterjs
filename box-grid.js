@@ -4,12 +4,15 @@ const { Engine, Render, Runner, Bodies, Body, Composite, Constraint, Events } =
 let mousePos = null;
 let dragCorner = null;
 let targetCorner = null;
+let gridBoxes = [];
 let firstBox = null;
 let secondBox = null;
 let boxFigures = [];
 let eyeletFigures = [];
 let firstEyelet = null;
-let SecondEyelet = null;
+let secondEyelet = null;
+let ropeFigures = [];
+let tempRope = null;
 
 const W = Math.min(window.innerWidth - 40, 800);
 const H = Math.min(window.innerHeight - 120, 560);
@@ -40,7 +43,12 @@ const ROWS = 11;
 const COLS = 11;
 const gridW = W * 0.9;
 const gridH = H * 0.9;
-const gridBoxes = [];
+
+// ROPE
+const SEGMENTS = 28;
+const SEG_LEN = 13;
+const LINK_R = 3.5;
+const SLACK = 1.4;
 
 const EYELET_OFFSETS = {
   1: { x: EYELET_PADDING, y: EYELET_PADDING }, // tl
@@ -58,6 +66,9 @@ const actualGridH = boxH * ROWS + GAP * (ROWS - 1);
 
 const ox = Math.floor((W - gridW) / 2);
 const oy = Math.floor((H - gridH) / 2);
+
+////////////////////
+let links = [];
 
 for (let r = 0; r < ROWS; r++) {
   for (let c = 0; c < COLS; c++) {
@@ -129,19 +140,11 @@ function selectBox(pos) {
 function selectEyelet() {
   return (
     eyeletFigures.find((eye) => {
-      const xs = eye.corner.map((c) => c.x);
-      const ys = eye.corner.map((c) => c.y);
-      const minX = Math.min(...xs),
-        maxX = Math.max(...xs);
-      const minY = Math.min(...ys),
-        maxY = Math.max(...ys);
-
       return (
-        pos.x >= minX &&
-        pos.x <= maxX &&
-        pos.y >= minY &&
-        pos.y <= maxY &&
-        eye.free === true
+        Math.hypot(
+          mousePos.x - eye.body.position.x,
+          mousePos.y - eye.body.position.y,
+        ) < EYELET_RADIUS
       );
     }) ?? null
   );
@@ -170,6 +173,9 @@ function onDown(e) {
   }
 
   firstEyelet = selectEyelet();
+  if (firstEyelet) {
+    createRopeFigure();
+  }
 }
 
 function onUp(e) {
@@ -177,15 +183,103 @@ function onUp(e) {
     createBoxFigure();
   }
 
-  dragCorner = null;
+  if (tempRope) {
+    if (secondEyelet) {
+      Body.setPosition(tempRope.links[SEGMENTS - 1], {
+        x: secondEyelet.body.position.x,
+        y: secondEyelet.body.position.y,
+      });
+      tempRope.endEyelet = secondEyelet;
+      ropeFigures.push(tempRope);
+      console.log(ropeFigures);
+    } else {
+      tempRope.links.forEach((link) => Composite.remove(world, link));
+    }
+  }
+
+  tempRope = null;
   firstBox = null;
   secondBox = null;
+  dragCorner = null;
   targetCorner = null;
+  firstEyelet = null;
+  secondEyelet = null;
+  tempRope = null;
+}
+
+function onMove(e) {
+  mousePos = canvasPos(e);
+
+  if (firstBox) {
+    nearCorner(mousePos);
+  }
+
+  if (firstEyelet) {
+    secondEyelet = selectEyelet();
+  }
+
+  if (tempRope && tempRope.links.length > 0) {
+    Body.setPosition(tempRope.links[SEGMENTS - 1], {
+      x: mousePos.x,
+      y: mousePos.y,
+    });
+  }
+}
+
+function nearCorner(pos) {
+  if (dragCorner) {
+    secondBox = selectBox(pos);
+
+    if (secondBox) {
+      targetCorner = nearestCorner(pos, secondBox);
+    }
+  }
+}
+
+function createRopeFigure() {
+  tempRope = {
+    startEyelet: firstEyelet,
+    endEyelet: null,
+    links: [],
+    constraints: [],
+  };
+
+  const start = firstEyelet.body.position;
+
+  const dist = Math.hypot(mousePos.x - start.x, mousePos.y - start.y);
+
+  const totalLength = Math.max(dist * 10, SEGMENTS * 1);
+  const segLen = totalLength / SEGMENTS;
+
+  for (let i = 0; i < SEGMENTS; i++) {
+    const isEnd = i === 0 || i === SEGMENTS - 1;
+
+    const link = Bodies.circle(start.x, start.y, LINK_R, {
+      isStatic: isEnd,
+      frictionAir: 0.05,
+      collisionFilter: { mask: 0 },
+      render: { fillStyle: "transparent" },
+    });
+
+    tempRope.links.push(link);
+    Composite.add(world, link);
+  }
+
+  for (let i = 0; i < SEGMENTS - 1; i++) {
+    const constraint = Constraint.create({
+      bodyA: tempRope.links[i],
+      bodyB: tempRope.links[i + 1],
+      length: SEG_LEN,
+      stiffness: 0.7,
+      damping: 0.08,
+      render: { visible: false },
+    });
+    tempRope.constraints.push(constraint);
+    Composite.add(world, constraint);
+  }
 }
 
 function createBoxFigure() {
-  // console.log(secondBox);
-
   if (dragCorner.i + targetCorner.i !== 5) return;
 
   const firstBoxCoor = { col: firstBox.col, row: firstBox.row };
@@ -359,21 +453,16 @@ function syncEyelets() {
   }
 }
 
-function onMove(e) {
-  mousePos = canvasPos(e);
-
-  if (firstBox) {
-    nearCorner(mousePos);
-  }
-}
-
-function nearCorner(pos) {
-  if (dragCorner) {
-    secondBox = selectBox(pos);
-
-    if (secondBox) {
-      targetCorner = nearestCorner(pos, secondBox);
-    }
+function syncRopeFigures() {
+  for (const rope of ropeFigures) {
+    Body.setPosition(rope.links[0], {
+      x: rope.startEyelet.body.position.x,
+      y: rope.startEyelet.body.position.y,
+    });
+    Body.setPosition(rope.links[SEGMENTS - 1], {
+      x: rope.endEyelet.body.position.x,
+      y: rope.endEyelet.body.position.y,
+    });
   }
 }
 
@@ -398,10 +487,85 @@ function drawDraggingBox(ctx) {
   }
 }
 
+function drawDraggingRope(ctx) {
+  if (tempRope.links.length === 0) return;
+
+  const endA = tempRope.links[0]; // left endpoint
+  const endB = tempRope.links[SEGMENTS - 1]; // right endpoint
+
+  ctx.beginPath();
+  ctx.moveTo(tempRope.links[0].position.x, tempRope.links[0].position.y);
+
+  for (let i = 1; i < tempRope.links.length - 1; i++) {
+    const c = tempRope.links[i].position;
+    const n = tempRope.links[i + 1].position;
+
+    ctx.quadraticCurveTo(c.x, c.y, (c.x + n.x) / 2, (c.y + n.y) / 2);
+  }
+
+  ctx.lineTo(
+    tempRope.links[SEGMENTS - 1].position.x,
+    tempRope.links[SEGMENTS - 1].position.y,
+  );
+
+  ctx.strokeStyle = "#00b809";
+  ctx.lineWidth = 4;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.stroke();
+
+  for (const ep of [endA, endB]) {
+    const { x, y } = ep.position;
+    ctx.beginPath();
+    ctx.arc(x, y, EYELET_RADIUS, 0, Math.PI * 2);
+    ctx.fillStyle = "#00a035";
+    ctx.fill();
+    // ctx.strokeStyle = "#004718";
+    // ctx.lineWidth = 2;
+    // ctx.stroke();
+  }
+}
+
+function drawRopeFigures(ctx) {
+  for (const rope of ropeFigures) {
+    // if (rope.links.length === 0);
+    // return;
+
+    ctx.beginPath();
+    ctx.moveTo(rope.links[0].position.x, rope.links[0].position.y);
+
+    for (let i = 1; i < rope.links.length - 1; i++) {
+      const c = rope.links[i].position;
+      const n = rope.links[i + 1].position;
+      ctx.quadraticCurveTo(c.x, c.y, (c.x + n.x) / 2, (c.y + n.y) / 2);
+    }
+
+    ctx.lineTo(
+      rope.links[SEGMENTS - 1].position.x,
+      rope.links[SEGMENTS - 1].position.y,
+    );
+
+    ctx.strokeStyle = "#00b809";
+    ctx.lineWidth = 4;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.stroke();
+
+    for (const ep of [rope.links[0], rope.links[SEGMENTS - 1]]) {
+      const { x, y } = ep.position;
+      ctx.beginPath();
+      ctx.arc(x, y, EYELET_RADIUS, 0, Math.PI * 2);
+      ctx.fillStyle = "#00a035";
+      ctx.fill();
+    }
+  }
+}
+
 canvas.addEventListener("mousedown", onDown);
 canvas.addEventListener("mousemove", onMove);
 canvas.addEventListener("mouseup", onUp);
-canvas.addEventListener("mouseleave", onUp); // treat leaving canvas as releasing
+canvas.addEventListener("mouseleave", onUp);
+
 // canvas.addEventListener("touchstart", onDown, { passive: false });
 // canvas.addEventListener("touchmove", onMove, { passive: false });
 // canvas.addEventListener("touchend", onUp);
@@ -410,10 +574,13 @@ Events.on(render, "afterRender", () => {
   const ctx = render.context;
 
   syncBoxFigureBody();
+  syncRopeFigures();
 
   drawDraggingBox(ctx);
+  drawRopeFigures(ctx);
   if (dragCorner) drawCircle(dragCorner.x, dragCorner.y, "#ff0000");
   if (targetCorner) drawCircle(targetCorner.x, targetCorner.y, "#09f7ff");
+  if (firstEyelet) drawDraggingRope(ctx);
 
   ctx.beginPath();
 });

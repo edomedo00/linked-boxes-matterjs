@@ -4,7 +4,7 @@ import {
   EYELET_RADIUS,
   world,
   boxFigures,
-} from "../box-grid.js";
+} from "./main.js";
 
 export function selectEyelet() {
   return (
