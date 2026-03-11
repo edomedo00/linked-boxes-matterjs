@@ -28,7 +28,7 @@ const world = engine.world;
 const render = Render.create({
   canvas,
   engine,
-  options: { width: W, height: H, wireframes: false, background: "#111" },
+  options: { width: W, height: H, wireframes: false, background: "#E6E6E6" },
 });
 
 Render.run(render);
@@ -36,6 +36,7 @@ const runner = Runner.create();
 Runner.run(runner, engine);
 
 const HANDLE_D = 20;
+const HANDLE_EYELET = 10;
 const GAP = 10; // px
 const EYELET_RADIUS = 6;
 const EYELET_PADDING = 10;
@@ -48,7 +49,7 @@ const gridH = H * 0.9;
 const SEGMENTS = 28;
 const SEG_LEN = 13;
 const LINK_R = 3.5;
-const SLACK = 1.4;
+const SLACK = 1.3;
 
 const EYELET_OFFSETS = {
   1: { x: EYELET_PADDING, y: EYELET_PADDING }, // tl
@@ -98,7 +99,7 @@ gridBoxes.forEach((box) => {
     boxH,
     {
       isStatic: true,
-      render: { fillStyle: "#c4c4c4" },
+      render: { fillStyle: "#b8babc33" },
     },
   );
   box.body = body;
@@ -144,7 +145,8 @@ function selectEyelet() {
         Math.hypot(
           mousePos.x - eye.body.position.x,
           mousePos.y - eye.body.position.y,
-        ) < EYELET_RADIUS
+        ) <
+        EYELET_RADIUS + HANDLE_EYELET
       );
     }) ?? null
   );
@@ -403,9 +405,13 @@ function syncBoxFigureBody() {
     if (!currBoxFig.body) {
       currBoxFig.body = Bodies.rectangle(cx, cy, w, h, {
         isStatic: true,
-        render: { fillStyle: "#4a90d9", opacity: 0.7 },
+        render: { fillStyle: "#B8BABC", opacity: 1 },
       });
       Composite.add(world, currBoxFig.body);
+      for (const eyelet of currBoxFig.eyelets) {
+        Composite.remove(world, eyelet.body);
+        Composite.add(world, eyelet.body);
+      }
     }
   }
 
@@ -422,7 +428,11 @@ function createBoxEyelet(corner) {
     {
       isStatic: true,
       label: "eyelet",
-      render: { fillStyle: "#0048e2", strokeStyle: "#4f00aa", lineWidth: 2 },
+      render: {
+        fillStyle: "#E6E6E6",
+        strokeStyle: "none",
+        lineWidth: 2,
+      },
       collisionFilter: {
         mask: 0,
       },
@@ -476,19 +486,22 @@ function drawCircle(x, y, color) {
 
 function drawDraggingBox(ctx) {
   if (dragCorner) {
-    ctx.strokeStyle = "#ff0000";
+    ctx.fillStyle = "#B8BABC";
+    ctx.strokeStyle = "#B8BABC";
     ctx.lineWidth = 2;
-    ctx.strokeRect(
-      dragCorner.x,
-      dragCorner.y,
-      mousePos.x - dragCorner.x,
-      mousePos.y - dragCorner.y,
-    );
+
+    const w = mousePos.x - dragCorner.x;
+    const h = mousePos.y - dragCorner.y;
+
+    ctx.fillRect(dragCorner.x, dragCorner.y, w, h);
+    ctx.strokeRect(dragCorner.x, dragCorner.y, w, h);
   }
 }
 
 function drawDraggingRope(ctx) {
   if (tempRope.links.length === 0) return;
+
+  ctx.save();
 
   const endA = tempRope.links[0]; // left endpoint
   const endB = tempRope.links[SEGMENTS - 1]; // right endpoint
@@ -518,18 +531,21 @@ function drawDraggingRope(ctx) {
     const { x, y } = ep.position;
     ctx.beginPath();
     ctx.arc(x, y, EYELET_RADIUS, 0, Math.PI * 2);
-    ctx.fillStyle = "#00a035";
+    ctx.fillStyle = "#00b809";
     ctx.fill();
     // ctx.strokeStyle = "#004718";
     // ctx.lineWidth = 2;
     // ctx.stroke();
   }
+
+  ctx.restore();
 }
 
 function drawRopeFigures(ctx) {
   for (const rope of ropeFigures) {
     // if (rope.links.length === 0);
     // return;
+    ctx.save();
 
     ctx.beginPath();
     ctx.moveTo(rope.links[0].position.x, rope.links[0].position.y);
@@ -555,9 +571,21 @@ function drawRopeFigures(ctx) {
       const { x, y } = ep.position;
       ctx.beginPath();
       ctx.arc(x, y, EYELET_RADIUS, 0, Math.PI * 2);
-      ctx.fillStyle = "#00a035";
+      ctx.fillStyle = "#00b809";
       ctx.fill();
     }
+
+    ctx.restore();
+  }
+}
+
+function updateRopeSlack(rope) {
+  const a = rope.links[0].position;
+  const b = rope.links[SEGMENTS - 1].position;
+  const dist = Math.hypot(b.x - a.x, b.y - a.y);
+  const segLen = (dist * SLACK) / (SEGMENTS - 1);
+  for (const c of rope.constraints) {
+    c.length = segLen;
   }
 }
 
@@ -576,11 +604,27 @@ Events.on(render, "afterRender", () => {
   syncBoxFigureBody();
   syncRopeFigures();
 
+  if (tempRope) updateRopeSlack(tempRope);
+
   drawDraggingBox(ctx);
   drawRopeFigures(ctx);
-  if (dragCorner) drawCircle(dragCorner.x, dragCorner.y, "#ff0000");
-  if (targetCorner) drawCircle(targetCorner.x, targetCorner.y, "#09f7ff");
+
+  // if (dragCorner) drawCircle(dragCorner.x, dragCorner.y, "#ff0000");
+  // if (targetCorner) drawCircle(targetCorner.x, targetCorner.y, "#09f7ff");
   if (firstEyelet) drawDraggingRope(ctx);
 
   ctx.beginPath();
 });
+
+// dos cuerdas en la misma cuenca? si
+
+// no se puede conectar con la misma caja
+// que se sombreen los cuadros, no tienes que star cerca de ninguna esquina, si esta en el cuadro que se complete
+
+// revisar que campos tendran o pueden tener interactividad y compartirlos
+
+// se pueden mover de cuencas las cuerdas  que ya existan?
+
+// puedes crear una cuerda en una cuenca donde ya existe otra cuerda? o se seleccionaria la cuerda que ya existe para poder moverla
+
+// de ser el segundo caso, estariamos
