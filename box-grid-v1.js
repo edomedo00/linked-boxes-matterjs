@@ -1,10 +1,11 @@
+// BEFORE BOX SELECTION CHANGE
+
 const { Engine, Render, Runner, Bodies, Body, Composite, Constraint, Events } =
   Matter;
 
 let mousePos = null;
-// let dragCorner = null;
-// let targetCorner = null;
-let hovered = [];
+let dragCorner = null;
+let targetCorner = null;
 let gridBoxes = [];
 let firstBox = null;
 let secondBox = null;
@@ -171,7 +172,8 @@ function onDown(e) {
   firstBox = selectBox(pos);
 
   if (firstBox) {
-    console.log(firstBox);
+    dragCorner = nearestCorner(pos, firstBox);
+    // console.log(dragCorner);
   }
 
   firstEyelet = selectEyelet();
@@ -181,8 +183,7 @@ function onDown(e) {
 }
 
 function onUp(e) {
-  if (firstBox && secondBox) {
-    console.log(secondBox);
+  if (dragCorner && targetCorner && secondBox) {
     createBoxFigure();
   }
 
@@ -203,22 +204,18 @@ function onUp(e) {
   tempRope = null;
   firstBox = null;
   secondBox = null;
-  // dragCorner = null;
-  // targetCorner = null;
+  dragCorner = null;
+  targetCorner = null;
   firstEyelet = null;
   secondEyelet = null;
   tempRope = null;
-  hovered = [];
 }
 
 function onMove(e) {
   mousePos = canvasPos(e);
 
   if (firstBox) {
-    secondBox = selectBox(mousePos);
-    // nearCorner(mousePos);
-    hovered = hoveredBoxes();
-    console.log(hovered);
+    nearCorner(mousePos);
   }
 
   if (firstEyelet) {
@@ -231,20 +228,6 @@ function onMove(e) {
       y: mousePos.y,
     });
   }
-}
-
-function hoveredBoxes() {
-  const { minCol, maxCol, minRow, maxRow } = absBoxesCoor();
-
-  const hovered = gridBoxes.filter(
-    (box) =>
-      box.col >= minCol &&
-      box.col <= maxCol &&
-      box.row >= minRow &&
-      box.row <= maxRow,
-  );
-
-  return hovered;
 }
 
 function nearCorner(pos) {
@@ -300,20 +283,36 @@ function createRopeFigure() {
   }
 }
 
-function absBoxesCoor() {
+function createBoxFigure() {
+  if (dragCorner.i + targetCorner.i !== 5) return;
+
   const firstBoxCoor = { col: firstBox.col, row: firstBox.row };
   const secondBoxCoor = { col: secondBox.col, row: secondBox.row };
+
+  if (dragCorner.i === 1) {
+    if (firstBoxCoor.col > secondBoxCoor.col) return;
+    if (firstBoxCoor.row > secondBoxCoor.row) return;
+  }
+
+  if (dragCorner.i === 2) {
+    if (firstBoxCoor.col < secondBoxCoor.col) return;
+    if (firstBoxCoor.row > secondBoxCoor.row) return;
+  }
+
+  if (dragCorner.i === 3) {
+    if (firstBoxCoor.col > secondBoxCoor.col) return;
+    if (firstBoxCoor.row < secondBoxCoor.row) return;
+  }
+
+  if (dragCorner.i === 4) {
+    if (firstBoxCoor.col < secondBoxCoor.col) return;
+    if (firstBoxCoor.row < secondBoxCoor.row) return;
+  }
 
   const minCol = Math.min(firstBoxCoor.col, secondBoxCoor.col);
   const maxCol = Math.max(firstBoxCoor.col, secondBoxCoor.col);
   const minRow = Math.min(firstBoxCoor.row, secondBoxCoor.row);
   const maxRow = Math.max(firstBoxCoor.row, secondBoxCoor.row);
-
-  return { minCol, maxCol, minRow, maxRow };
-}
-
-function createBoxFigure() {
-  const { minCol, maxCol, minRow, maxRow } = absBoxesCoor();
 
   const unavailableGridBox = gridBoxes.some(
     (box) =>
@@ -350,18 +349,12 @@ function createBoxFigure() {
   ];
 
   eyeletFigures.push(...eyelets);
-
-  console.log(gridBoxes);
-  let boxTL = gridBoxes.find((box) => box.col === minCol && box.row === minRow);
-  let boxBR = gridBoxes.find((box) => box.col === maxCol && box.row === maxRow);
-
-  console.log(boxBR);
+  console.log(eyeletFigures);
 
   const boxFig = {
     id: boxFigures.length,
-    start: { box: firstBox },
-    end: { box: secondBox },
-    absCoor: { TL: boxTL.corners[0], BR: boxBR.corners[3] },
+    start: { box: firstBox, corner: dragCorner },
+    end: { box: secondBox, corner: targetCorner },
     body: null,
     align: "center",
     eyelets,
@@ -386,15 +379,13 @@ function createBoxFigure() {
 function syncBoxFigureBody() {
   if (boxFigures.length === 0) return;
 
-  let currBoxFig = null;
-
   for (let i = 0; i < boxFigures.length; i++) {
-    currBoxFig = boxFigures[i];
+    let currBoxFig = boxFigures[i];
 
-    const x1 = currBoxFig.absCoor.TL.x;
-    const y1 = currBoxFig.absCoor.TL.y;
-    const x2 = currBoxFig.absCoor.BR.x;
-    const y2 = currBoxFig.absCoor.BR.y;
+    const x1 = currBoxFig.start.corner.x;
+    const y1 = currBoxFig.start.corner.y;
+    const x2 = currBoxFig.end.corner.x;
+    const y2 = currBoxFig.end.corner.y;
 
     const cx = (x1 + x2) / 2;
     const cy = (y1 + y2) / 2;
@@ -426,8 +417,6 @@ function syncBoxFigureBody() {
     }
   }
 
-  currBoxFig = null;
-
   syncEyelets();
 }
 
@@ -444,6 +433,7 @@ function createBoxEyelet(corner) {
       render: {
         fillStyle: "#E6E6E6",
         strokeStyle: "none",
+        lineWidth: 2,
       },
       collisionFilter: {
         mask: 0,
@@ -488,26 +478,26 @@ function syncRopeFigures() {
   }
 }
 
-function syncGridBoxColors(hovered = []) {
-  const hoveredSet = new Set(hovered.map(({ row, col }) => `${row},${col}`));
-
-  for (const box of gridBoxes) {
-    if (!box.body) continue;
-
-    if (hoveredSet.has(`${box.row},${box.col}`)) {
-      box.body.render.fillStyle = "#B8BABC";
-    } else {
-      box.body.render.fillStyle = "#b8babc33";
-    }
-  }
-}
-
 function drawCircle(x, y, color) {
   const ctx = render.context;
   ctx.beginPath();
   ctx.arc(x, y, 5, 0, Math.PI * 2);
   ctx.fillStyle = color;
   ctx.fill();
+}
+
+function drawDraggingBox(ctx) {
+  if (dragCorner) {
+    ctx.fillStyle = "#B8BABC";
+    ctx.strokeStyle = "#B8BABC";
+    ctx.lineWidth = 2;
+
+    const w = mousePos.x - dragCorner.x;
+    const h = mousePos.y - dragCorner.y;
+
+    ctx.fillRect(dragCorner.x, dragCorner.y, w, h);
+    ctx.strokeRect(dragCorner.x, dragCorner.y, w, h);
+  }
 }
 
 function drawDraggingRope(ctx) {
@@ -545,6 +535,9 @@ function drawDraggingRope(ctx) {
     ctx.arc(x, y, EYELET_RADIUS, 0, Math.PI * 2);
     ctx.fillStyle = "#00b809";
     ctx.fill();
+    // ctx.strokeStyle = "#004718";
+    // ctx.lineWidth = 2;
+    // ctx.stroke();
   }
 
   ctx.restore();
@@ -552,6 +545,8 @@ function drawDraggingRope(ctx) {
 
 function drawRopeFigures(ctx) {
   for (const rope of ropeFigures) {
+    // if (rope.links.length === 0);
+    // return;
     ctx.save();
 
     ctx.beginPath();
@@ -613,9 +608,8 @@ Events.on(render, "afterRender", () => {
 
   if (tempRope) updateRopeSlack(tempRope);
 
+  drawDraggingBox(ctx);
   drawRopeFigures(ctx);
-
-  syncGridBoxColors(hovered);
 
   // if (dragCorner) drawCircle(dragCorner.x, dragCorner.y, "#ff0000");
   // if (targetCorner) drawCircle(targetCorner.x, targetCorner.y, "#09f7ff");
