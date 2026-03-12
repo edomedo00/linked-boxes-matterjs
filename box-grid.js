@@ -8,12 +8,18 @@ let hovered = [];
 let gridBoxes = [];
 let firstBox = null;
 let secondBox = null;
+let lastSecondBox = null;
 let boxFigures = [];
 let eyeletFigures = [];
 let firstEyelet = null;
 let secondEyelet = null;
 let ropeFigures = [];
 let tempRope = null;
+let activeBoxFigure = null;
+
+let nextFigureId = 0;
+let nextEyeletId = 0;
+let nextRopeId = 0;
 
 const W = Math.min(window.innerWidth - 40, 800);
 const H = Math.min(window.innerHeight - 120, 560);
@@ -117,6 +123,19 @@ function canvasPos(e) {
     y: src.clientY - r.top,
   };
 }
+// BEFOREEEEE
+function selectBoxFigure(pos) {
+  const eyelet = selectEyelet();
+
+  const selected = boxFigures.find((fig) => {
+    const { TL, BR } = fig.absCoor;
+    return pos.x >= TL.x && pos.x <= BR.x && pos.y >= TL.y && pos.y <= BR.y;
+  });
+
+  if (eyelet && eyelet?.figureId === activeBoxFigure?.id) return 1; // return null when the eyelet is in the selected figure
+
+  return selected ?? null;
+}
 
 function selectBox(pos) {
   return (
@@ -168,33 +187,45 @@ function nearestCorner(pos, box) {
 
 function onDown(e) {
   const pos = canvasPos(e);
+  const eyelet = selectEyelet();
+  const clickedFig = selectBoxFigure(pos);
+
   firstBox = selectBox(pos);
+  secondBox = selectBox(pos);
 
-  if (firstBox) {
-    console.log(firstBox);
-  }
+  firstEyelet = eyelet?.free ? eyelet : null;
+  if (firstEyelet) createRopeFigure();
 
-  firstEyelet = selectEyelet();
-  if (firstEyelet) {
-    createRopeFigure();
+  if (clickedFig === 1)
+    return; // if no clicked figure, do not toggle selecteBoxFigure
+  else {
+    activeBoxFigure =
+      clickedFig?.id === activeBoxFigure?.id ? null : clickedFig;
   }
 }
 
 function onUp(e) {
   if (firstBox && secondBox) {
-    console.log(secondBox);
     createBoxFigure();
+    activeBoxFigure = boxFigures[boxFigures.length - 1]; // set active by default
   }
 
   if (tempRope) {
-    if (secondEyelet) {
+    if (
+      secondEyelet &&
+      secondEyelet !== firstEyelet &&
+      secondEyelet.figureId !== firstEyelet.figureId
+    ) {
       Body.setPosition(tempRope.links[SEGMENTS - 1], {
         x: secondEyelet.body.position.x,
         y: secondEyelet.body.position.y,
       });
       tempRope.endEyelet = secondEyelet;
+
+      firstEyelet.free = false;
+      secondEyelet.free = false;
+
       ropeFigures.push(tempRope);
-      console.log(ropeFigures);
     } else {
       tempRope.links.forEach((link) => Composite.remove(world, link));
     }
@@ -203,8 +234,6 @@ function onUp(e) {
   tempRope = null;
   firstBox = null;
   secondBox = null;
-  // dragCorner = null;
-  // targetCorner = null;
   firstEyelet = null;
   secondEyelet = null;
   tempRope = null;
@@ -214,11 +243,13 @@ function onUp(e) {
 function onMove(e) {
   mousePos = canvasPos(e);
 
+  secondBox = selectBox(mousePos) ?? lastSecondBox;
+
   if (firstBox) {
-    secondBox = selectBox(mousePos);
-    // nearCorner(mousePos);
-    hovered = hoveredBoxes();
-    console.log(hovered);
+    if (secondBox) {
+      lastSecondBox = secondBox;
+      hovered = hoveredBoxes();
+    }
   }
 
   if (firstEyelet) {
@@ -230,6 +261,20 @@ function onMove(e) {
       x: mousePos.x,
       y: mousePos.y,
     });
+  }
+}
+
+function onKeydown(e) {
+  switch (e.code) {
+    case "KeyD":
+      deleteBoxFigure();
+      return;
+    case "KeyU":
+      deleteBoxRopes();
+      return;
+
+    default:
+      return;
   }
 }
 
@@ -247,18 +292,19 @@ function hoveredBoxes() {
   return hovered;
 }
 
-function nearCorner(pos) {
-  if (dragCorner) {
-    secondBox = selectBox(pos);
+// function nearCorner(pos) {
+//   if (dragCorner) {
+//     secondBox = selectBox(pos);
 
-    if (secondBox) {
-      targetCorner = nearestCorner(pos, secondBox);
-    }
-  }
-}
+//     if (secondBox) {
+//       targetCorner = nearestCorner(pos, secondBox);
+//     }
+//   }
+// }
 
 function createRopeFigure() {
   tempRope = {
+    id: nextRopeId,
     startEyelet: firstEyelet,
     endEyelet: null,
     links: [],
@@ -300,9 +346,9 @@ function createRopeFigure() {
   }
 }
 
-function absBoxesCoor() {
-  const firstBoxCoor = { col: firstBox.col, row: firstBox.row };
-  const secondBoxCoor = { col: secondBox.col, row: secondBox.row };
+function absBoxesCoor(fBox = firstBox, sBox = secondBox) {
+  const firstBoxCoor = { col: fBox.col, row: fBox.row };
+  const secondBoxCoor = { col: sBox.col, row: sBox.row };
 
   const minCol = Math.min(firstBoxCoor.col, secondBoxCoor.col);
   const maxCol = Math.max(firstBoxCoor.col, secondBoxCoor.col);
@@ -331,34 +377,35 @@ function createBoxFigure() {
       gridBoxes
         .find((box) => box.col === minCol && box.row === minRow)
         .corners.find((c) => c.i === 1),
+      nextFigureId,
     ),
     createBoxEyelet(
       gridBoxes
         .find((box) => box.col === maxCol && box.row === minRow)
         .corners.find((c) => c.i === 2),
+      nextFigureId,
     ),
     createBoxEyelet(
       gridBoxes
         .find((box) => box.col === minCol && box.row === maxRow)
         .corners.find((c) => c.i === 3),
+      nextFigureId,
     ),
     createBoxEyelet(
       gridBoxes
         .find((box) => box.col === maxCol && box.row === maxRow)
         .corners.find((c) => c.i === 4),
+      nextFigureId,
     ),
   ];
 
   eyeletFigures.push(...eyelets);
 
-  console.log(gridBoxes);
   let boxTL = gridBoxes.find((box) => box.col === minCol && box.row === minRow);
   let boxBR = gridBoxes.find((box) => box.col === maxCol && box.row === maxRow);
 
-  console.log(boxBR);
-
   const boxFig = {
-    id: boxFigures.length,
+    id: nextFigureId++,
     start: { box: firstBox },
     end: { box: secondBox },
     absCoor: { TL: boxTL.corners[0], BR: boxBR.corners[3] },
@@ -381,6 +428,67 @@ function createBoxFigure() {
   boxFigures.push(boxFig);
 
   syncBoxFigureBody();
+}
+
+function deleteBoxFigure() {
+  if (!activeBoxFigure) return;
+
+  deleteBoxRopes();
+
+  Composite.remove(world, activeBoxFigure.body);
+
+  for (let i = eyeletFigures.length - 1; i >= 0; i--) {
+    const eyelet = eyeletFigures[i];
+
+    if (eyelet.figureId === activeBoxFigure.id) {
+      Composite.remove(world, eyelet.body);
+      eyeletFigures.splice(i, 1);
+    }
+  }
+
+  const { minCol, maxCol, minRow, maxRow } = absBoxesCoor(
+    activeBoxFigure.start.box,
+    activeBoxFigure.end.box,
+  );
+
+  gridBoxes.forEach((box) => {
+    if (
+      box.col >= minCol &&
+      box.col <= maxCol &&
+      box.row >= minRow &&
+      box.row <= maxRow
+    ) {
+      box.free = true;
+    }
+  });
+
+  const index = boxFigures.findIndex((f) => f.id === activeBoxFigure.id);
+  if (index !== -1) boxFigures.splice(index, 1);
+
+  boxFigures.splice();
+
+  activeBoxFigure = null;
+}
+
+function deleteBoxRopes() {
+  if (activeBoxFigure) {
+    for (let i = ropeFigures.length - 1; i >= 0; i--) {
+      const rope = ropeFigures[i];
+
+      if (
+        rope.startEyelet.figureId === activeBoxFigure.id ||
+        rope.endEyelet.figureId === activeBoxFigure.id
+      ) {
+        rope.links.forEach((link) => Composite.remove(world, link));
+        rope.constraints.forEach((c) => Composite.remove(world, c));
+
+        rope.startEyelet.free = true;
+        rope.endEyelet.free = true;
+
+        ropeFigures.splice(i, 1);
+      }
+    }
+  }
 }
 
 function syncBoxFigureBody() {
@@ -431,7 +539,7 @@ function syncBoxFigureBody() {
   syncEyelets();
 }
 
-function createBoxEyelet(corner) {
+function createBoxEyelet(corner, figureId) {
   const offset = EYELET_OFFSETS[corner.i];
 
   const body = Bodies.circle(
@@ -454,8 +562,8 @@ function createBoxEyelet(corner) {
   Composite.add(world, body);
 
   return {
-    id: eyeletFigures.length,
-    figureId: boxFigures.length,
+    id: nextEyeletId++,
+    figureId: figureId,
     corner,
     offset,
     body,
@@ -596,10 +704,46 @@ function updateRopeSlack(rope) {
   }
 }
 
+// function drawBoxFigureBorders(ctx) {
+//   for (const fig of boxFigures) {
+//     const { TL, BR } = fig.absCoor;
+//     const x = TL.x;
+//     const y = TL.y;
+//     const w = Math.abs(BR.x - TL.x);
+//     const h = Math.abs(BR.y - TL.y);
+
+//     const isSelected = activeBoxFigure?.id === fig.id;
+
+//     ctx.save();
+//     ctx.strokeStyle = isSelected ? "#000000" : "#11111100";
+//     ctx.lineWidth = isSelected ? 1 : 0;
+//     ctx.strokeRect(x, y, w, h);
+//     ctx.restore();
+//   }
+// }
+
+function drawactiveBoxFigure(ctx) {
+  if (!activeBoxFigure) return;
+
+  const { TL, BR } = activeBoxFigure.absCoor;
+  const x = TL.x;
+  const y = TL.y;
+  const w = BR.x - TL.x;
+  const h = BR.y - TL.y;
+
+  ctx.save();
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, h);
+  ctx.restore();
+}
+
 canvas.addEventListener("mousedown", onDown);
 canvas.addEventListener("mousemove", onMove);
 canvas.addEventListener("mouseup", onUp);
 canvas.addEventListener("mouseleave", onUp);
+
+document.addEventListener("keydown", onKeydown);
 
 // canvas.addEventListener("touchstart", onDown, { passive: false });
 // canvas.addEventListener("touchmove", onMove, { passive: false });
@@ -608,14 +752,14 @@ canvas.addEventListener("mouseleave", onUp);
 Events.on(render, "afterRender", () => {
   const ctx = render.context;
 
+  syncGridBoxColors(hovered);
   syncBoxFigureBody();
   syncRopeFigures();
 
   if (tempRope) updateRopeSlack(tempRope);
 
+  drawactiveBoxFigure(ctx);
   drawRopeFigures(ctx);
-
-  syncGridBoxColors(hovered);
 
   // if (dragCorner) drawCircle(dragCorner.x, dragCorner.y, "#ff0000");
   // if (targetCorner) drawCircle(targetCorner.x, targetCorner.y, "#09f7ff");
@@ -624,15 +768,6 @@ Events.on(render, "afterRender", () => {
   ctx.beginPath();
 });
 
-// dos cuerdas en la misma cuenca? si
-
-// no se puede conectar con la misma caja
-// que se sombreen los cuadros, no tienes que star cerca de ninguna esquina, si esta en el cuadro que se complete
-
 // revisar que campos tendran o pueden tener interactividad y compartirlos
 
-// se pueden mover de cuencas las cuerdas  que ya existan?
-
-// puedes crear una cuerda en una cuenca donde ya existe otra cuerda? o se seleccionaria la cuerda que ya existe para poder moverla
-
-// de ser el segundo caso, estariamos
+// se debe autoseleccionar la ultima caja creada

@@ -5,8 +5,10 @@
 }
 
 body {
-  overflow: hidden; /* also prevents scrollbars appearing */
+  overflow: hidden;
+  padding: 3rem;
 }
+
 canvas {
-  display: block; /* also fixes a subtle 4px gap caused by inline element spacing */
+  display: block;
 }
